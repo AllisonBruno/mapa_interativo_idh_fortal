@@ -2,21 +2,24 @@ import pandas as pd
 import folium
 import branca.colormap as cm
 
-# ---- 1. Ler o arquivo principal (IDH) ----
+# --- 1. Ler o arquivo principal (IDH) ---
+# NOTE: Você deve ter o arquivo 'IDH.xlsx' na mesma pasta.
 df = pd.read_excel('IDH.xlsx')
 df['Latitude'] = pd.to_numeric(df['Latitude (generated)'], errors='coerce')
 df['Longitude'] = pd.to_numeric(df['Longitude (generated)'], errors='coerce')
 df_mapa = df.dropna(subset=['Latitude', 'Longitude'])
 
-# ---- 2. Ler o segundo arquivo (Condições Urbanas) ----
+# --- 2. Ler o segundo arquivo (Condições Urbanas) ---
+# NOTE: Você deve ter o arquivo 'IBEU_data.xlsx' na mesma pasta.
 df_cond = pd.read_excel('IBEU_data.xlsx')
 df_cond['Latitude'] = pd.to_numeric(df_cond['Latitude (generated)'], errors='coerce')
 df_cond['Longitude'] = pd.to_numeric(df_cond['Longitude (generated)'], errors='coerce')
 df_cond = df_cond.dropna(subset=['Latitude', 'Longitude'])
 
 # -------------------------------------------------------------------------
-# ---- 3. Ler o arquivo IDE (Índice Educacional) - TRATAMENTO E NORMALIZAÇÃO ----
+# --- 3. Ler o arquivo IDE (Índice Educacional) - TRATAMENTO E NORMALIZAÇÃO ---
 # -------------------------------------------------------------------------
+# NOTE: Você deve ter o arquivo 'IDE.xlsx' na mesma pasta.
 df_ide = pd.read_excel('IDE.xlsx')
 
 colunas_percentuais = [
@@ -33,7 +36,14 @@ for col in colunas_percentuais + colunas_coordenadas:
         df_ide[col] = df_ide[col].astype(str).str.replace(',', '.').str.strip()
         df_ide[col] = pd.to_numeric(df_ide[col], errors='coerce')
 
-# 🌟 CORREÇÃO DE NORMALIZAÇÃO: Divide os percentuais por 100 🌟
+# 🔑 MODIFICAÇÃO 1: Renomear a coluna para facilitar o uso no pop-up
+if 'Nome da Área de Ponderação' in df_ide.columns:
+    df_ide.rename(columns={'Nome da Área de Ponderação': 'Area_Ponderacao'}, inplace=True)
+else:
+    # Caso o nome da coluna mude, use o primeiro nome disponível (coluna 1)
+    df_ide.rename(columns={df_ide.columns[0]: 'Area_Ponderacao'}, inplace=True)
+
+# Normalização: Divide os percentuais por 100
 for col in colunas_percentuais:
     df_ide[f'{col}_NORM'] = df_ide[col] / 100.0
     
@@ -46,13 +56,13 @@ df_ide = df_ide.dropna(subset=['Latitude', 'Longitude'])
 print(f"Total de pontos no DataFrame IDE com coordenadas válidas: {len(df_ide)}")
 
 # -------------------------------------------------------------------------
-# ---- 4. Criar o mapa base ----
+# --- 4. Criar o mapa base ---
 # -------------------------------------------------------------------------
 lat_centro = df_mapa['Latitude'].mean()
 lon_centro = df_mapa['Longitude'].mean()
 mapa = folium.Map(location=[lat_centro, lon_centro], zoom_start=11, tiles='OpenStreetMap')
 
-# ---- 5. Função de cor (para IDH e Condições Urbanas) ----
+# --- 5. Função de cor (para IDH e Condições Urbanas) ---
 def get_color_idh_cond(classificacao):
     if 'Muito baixo' in classificacao:
         return 'darkred'
@@ -66,7 +76,7 @@ def get_color_idh_cond(classificacao):
         return 'green'
     return 'gray'
 
-# ---- 6. Camada IDH (Círculos Coloridos com classificação IDH) ----
+# --- 6. Camada IDH (Círculos Coloridos com classificação IDH) ---
 idh_layer = folium.FeatureGroup(name='IDH dos Bairros').add_to(mapa)
 
 for index, row in df_mapa.iterrows():
@@ -84,7 +94,7 @@ for index, row in df_mapa.iterrows():
         fill_color=get_color_idh_cond(row['Classificação IDH'])
     ).add_to(idh_layer)
 
-# ---- 7. Camada Condições Urbanas (Ícones de Casa) ----
+# --- 7. Camada Condições Urbanas (Ícones de Casa) ---
 cond_layer = folium.FeatureGroup(name='Condições Urbanas').add_to(mapa)
 
 for index, row in df_cond.iterrows():
@@ -102,7 +112,7 @@ for index, row in df_cond.iterrows():
     ).add_to(cond_layer)
 
 # -------------------------------------------------------------------------
-# ---- 8. Camada Índice de Desenvolvimento Educacional (IDE) - Ícones de Livro ----
+# --- 8. Camada Índice de Desenvolvimento Educacional (IDE) - Ícones de Livro ---
 # -------------------------------------------------------------------------
 ide_layer = folium.FeatureGroup(name='Índice de Desenvolvimento Educacional (IDE)').add_to(mapa)
 
@@ -138,7 +148,7 @@ def resumo_educacional(row):
 if len(df_ide) > 0:
     for index, row in df_ide.iterrows():
 
-        # ✅ NOVO CÁLCULO: Média educacional normalizada (garante soma = 1)
+        # Cálculo da Média Educacional normalizada (1.0 a 4.0)
         soma_norm = (
             row['IDE-1: Sem instrução e fundamental incompleto (A)_NORM'] +
             row['IDE-2: Fundamental completo e médio incompleto (B)_NORM'] +
@@ -159,7 +169,7 @@ if len(df_ide) > 0:
         if media_educ is None or pd.isna(media_educ):
             continue
 
-        # ✅ NOVA ESCALA DE CORES — mais equilibrada
+        # Escala de CORES para o marcador
         if media_educ < 1.8:
             cor_pin_ide = 'darkred'      # Muito Baixo
         elif media_educ < 2.1:
@@ -171,7 +181,9 @@ if len(df_ide) > 0:
         else:
             cor_pin_ide = 'green'        # Muito Alto
 
+        # 🔑 MODIFICAÇÃO 2: Inclusão da Área de Ponderação no pop-up
         popup_text = f"""
+        <b>Área de Ponderação:</b> {row['Area_Ponderacao']}<br>
         <b>Bairro:</b> {row['Bairro']}<br>
         <b>Média Educacional:</b> {media_educ:.2f}<br><br>
         {resumo_educacional(row)}<br><br>
@@ -190,12 +202,13 @@ if len(df_ide) > 0:
             icon=folium.Icon(color=cor_pin_ide, icon='book', prefix='fa', icon_color='white')
         ).add_to(ide_layer)
 
-# ---- 9. Controle de camadas ----
+# -------------------------------------------------------------------------
+# --- 9. Controle de camadas ---
+# -------------------------------------------------------------------------
 folium.LayerControl().add_to(mapa)
 
-# ---- 10. Salvar o mapa ----
-mapa.save("mapa_interativo_final_corrigido_educacao.html")
+# --- 10. Salvar o mapa ---
+mapa.save("index.html")
 
 print("✅ Mapa interativo salvo como 'mapa_interativo_final_corrigido_educacao.html'.")
-print("✅ Média Educacional agora é normalizada corretamente (1.0 a 4.0).")
-print("✅ Bairros com alta escolaridade aparecem em verde (claro ou escuro).")
+print("✅ A coluna 'Área de Ponderação' foi adicionada aos pop-ups da camada IDE.")
